@@ -21,6 +21,15 @@
             if stdenvNoCC.hostPlatform.isDarwin
             then "node-v${source.version}-${nodePlatform}.tar.gz"
             else "node-v${source.version}-${nodePlatform}.tar.xz";
+
+          sourceSha256 =
+            if source ? hashes
+            then
+              source.hashes.${hostSystem}
+                or (throw "Missing Node hash for system ${hostSystem} in ${toString sourceFile}")
+            else if source ? sha256
+            then source.sha256
+            else throw "Expected either `sha256` or `hashes.<system>` in ${toString sourceFile}";
         in
         stdenvNoCC.mkDerivation {
           pname = "nodejs-upstream";
@@ -28,7 +37,7 @@
 
           src = fetchurl {
             url = "https://nodejs.org/dist/v${source.version}/${archive}";
-            sha256 = source.sha256;
+            sha256 = sourceSha256;
           };
 
           nativeBuildInputs = [

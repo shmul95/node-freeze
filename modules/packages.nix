@@ -11,6 +11,7 @@
           pkgs.curl
           pkgs.gawk
           pkgs.gnugrep
+          pkgs.jq
           pkgs.nix
         ];
 
@@ -118,39 +119,54 @@
 
           validate_version "$version"
 
-          case "$(uname -s)-$(uname -m)" in
-            Linux-x86_64)
-              archive="node-v''${version}-linux-x64.tar.xz"
-              ;;
-            Linux-aarch64)
-              archive="node-v''${version}-linux-arm64.tar.xz"
-              ;;
-            Darwin-x86_64)
-              archive="node-v''${version}-darwin-x64.tar.gz"
-              ;;
-            Darwin-arm64)
-              archive="node-v''${version}-darwin-arm64.tar.gz"
-              ;;
-            *)
-              echo "error: unsupported platform: $(uname -s)-$(uname -m)" >&2
-              exit 1
-              ;;
-          esac
-
           shasumsUrl="https://nodejs.org/dist/v''${version}/SHASUMS256.txt"
+          shasums="$(curl -fsSL "$shasumsUrl")"
 
-          hexHash="$(
-            curl -fsSL "$shasumsUrl" \
-              | grep "  ''${archive}$" \
-              | awk '{print $1}'
-          )"
+          archive_for_system() {
+            case "$1" in
+              x86_64-linux)
+                printf '%s' "node-v''${version}-linux-x64.tar.xz"
+                ;;
+              aarch64-linux)
+                printf '%s' "node-v''${version}-linux-arm64.tar.xz"
+                ;;
+              x86_64-darwin)
+                printf '%s' "node-v''${version}-darwin-x64.tar.gz"
+                ;;
+              aarch64-darwin)
+                printf '%s' "node-v''${version}-darwin-arm64.tar.gz"
+                ;;
+              *)
+                echo "error: unsupported system: $1" >&2
+                exit 1
+                ;;
+            esac
+          }
 
-          if [ -z "$hexHash" ]; then
-            echo "error: could not find checksum for $archive in $shasumsUrl" >&2
-            exit 1
-          fi
+          hash_for_system() {
+            local system="$1"
+            local archive
+            local hexHash
 
-          sriHash="$(printf '%s' "$hexHash" | nix hash convert --hash-algo sha256 --to sri)"
+            archive="$(archive_for_system "$system")"
+            hexHash="$(
+              printf '%s\n' "$shasums" \
+                | grep "  ''${archive}$" \
+                | awk '{print $1}'
+            )"
+
+            if [ -z "$hexHash" ]; then
+              echo "error: could not find checksum for $archive in $shasumsUrl" >&2
+              exit 1
+            fi
+
+            nix hash convert --hash-algo sha256 --to sri "$hexHash"
+          }
+
+          x86_64_linux_hash="$(hash_for_system x86_64-linux)"
+          aarch64_linux_hash="$(hash_for_system aarch64-linux)"
+          x86_64_darwin_hash="$(hash_for_system x86_64-darwin)"
+          aarch64_darwin_hash="$(hash_for_system aarch64-darwin)"
 
           mkdir -p "$outDir"
           outFile="$outDir/.node-source.nix"
@@ -158,14 +174,21 @@
           cat > "$outFile" <<EOF
           {
             version = "$version";
-            sha256 = "$sriHash";
+            hashes = {
+              "x86_64-linux" = "$x86_64_linux_hash";
+              "aarch64-linux" = "$aarch64_linux_hash";
+              "x86_64-darwin" = "$x86_64_darwin_hash";
+              "aarch64-darwin" = "$aarch64_darwin_hash";
+            };
           }
           EOF
 
           echo "wrote $outFile"
           echo "version: $version"
-          echo "archive: $archive"
-          echo "sha256: $sriHash"
+          echo "x86_64-linux: $x86_64_linux_hash"
+          echo "aarch64-linux: $aarch64_linux_hash"
+          echo "x86_64-darwin: $x86_64_darwin_hash"
+          echo "aarch64-darwin: $aarch64_darwin_hash"
         '';
       };
 

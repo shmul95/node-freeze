@@ -15,7 +15,12 @@ It freezes a concrete Node.js version into a `.node-source.nix` file:
 ```nix
 {
   version = "24.15.0";
-  sha256 = "sha256-...";
+  hashes = {
+    "x86_64-linux" = "sha256-...";
+    "aarch64-linux" = "sha256-...";
+    "x86_64-darwin" = "sha256-...";
+    "aarch64-darwin" = "sha256-...";
+  };
 }
 ```
 
@@ -51,6 +56,7 @@ nvm-freeze --path modules
 * explicit version: uses that exact semver
 * `--from-nvmrc`: reads `.nvmrc`
 * `--path modules`: writes `modules/.node-source.nix`
+* the generated file includes hashes for all supported platforms, so downstream flakes do not break when evaluated on a different host architecture
 
 ## Local development
 
